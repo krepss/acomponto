@@ -5,7 +5,7 @@ import plotly.express as px
 # Configuração da Página
 st.set_page_config(page_title="Monitorização de Banco de Horas", layout="wide")
 
-st.title("⏳ Painel de Controle: Banco de Horas da Equipe")
+st.title("⏳ Painel de Controlo: Banco de Horas da Equipa")
 
 # --- ÁREA DE UPLOAD (Aceita CSV e XLSX) ---
 st.write("Faça o upload do ficheiro exportado do sistema de ponto (Excel ou CSV).")
@@ -39,7 +39,25 @@ def converter_para_horas_decimais(valor):
 # --- Processamento ---
 if arquivo_upload is not None:
     try:
-        # Detectar se é Excel ou CSV e ler adequadamente
+        # 1. Extrair Data/Hora do Cabeçalho (Linha 3 do arquivo original)
+        data_relatorio = "Data não identificada"
+        try:
+            if arquivo_upload.name.endswith('.csv'):
+                df_head = pd.read_csv(arquivo_upload, header=None, nrows=3)
+            else:
+                df_head = pd.read_excel(arquivo_upload, header=None, nrows=3, engine='openpyxl')
+            
+            # Pega o valor da 3ª linha, 1ª coluna (índice 2, 0)
+            val_data = str(df_head.iloc[2, 0])
+            if val_data and val_data != 'nan':
+                data_relatorio = val_data
+        except Exception:
+            pass # Se falhar a data, segue o fluxo
+        
+        # Resetar o ponteiro do arquivo para ler os dados completos
+        arquivo_upload.seek(0)
+
+        # 2. Ler Dados Principais
         if arquivo_upload.name.endswith('.csv'):
             df = pd.read_csv(arquivo_upload, skiprows=4)
         else:
@@ -49,6 +67,9 @@ if arquivo_upload is not None:
         if 'Total Banco' not in df.columns or 'Cargo' not in df.columns:
             st.error("Erro: O ficheiro não tem as colunas esperadas ('Total Banco', 'Cargo'). Verifique o relatório.")
         else:
+            # Exibir Carimbo de Data
+            st.info(f"📅 **Data de Extração dos Dados:** {data_relatorio}")
+
             # Tratamento de dados
             df['Total Banco'] = df['Total Banco'].astype(str)
             df['Saldo_Decimal'] = df['Total Banco'].apply(converter_para_horas_decimais)
@@ -89,24 +110,7 @@ if arquivo_upload is not None:
                     else:
                         st.success("Ninguém na zona crítica configurada.")
 
-                # --- GRÁFICO GERAL ---
-                st.divider()
-                st.subheader("📊 Visão Geral da Equipa")
-                
-                fig = px.bar(
-                    df_filtrado.sort_values('Saldo_Decimal'), 
-                    x='Saldo_Decimal', 
-                    y='Nome', 
-                    orientation='h',
-                    color='Saldo_Decimal',
-                    title="Saldo de Horas por Colaborador",
-                    color_continuous_scale=['red', 'gray', 'green'],
-                    height=max(500, len(df_filtrado) * 20)
-                )
-                fig.add_vline(x=0, line_width=1, line_dash="dash", line_color="black")
-                st.plotly_chart(fig, use_container_width=True)
-
-                # --- NOVA SEÇÃO: TABELA SOMENTE DE NEGATIVOS ---
+                # --- TABELA SOMENTE DE NEGATIVOS (Destaque Principal) ---
                 st.divider()
                 st.subheader("📉 Lista de Devedores (Apenas Saldo Negativo)")
                 
