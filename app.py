@@ -7,137 +7,130 @@ st.set_page_config(page_title="Monitorização de Banco de Horas", layout="wide"
 
 st.title("⏳ Painel de Controlo: Banco de Horas da Equipa")
 
-# --- ÁREA DE UPLOAD (Aceita CSV e XLSX) ---
+# --- ÁREA DE UPLOAD ---
 st.write("Faça o upload do ficheiro exportado do sistema de ponto (Excel ou CSV).")
 arquivo_upload = st.file_uploader("Escolha o ficheiro", type=["csv", "xlsx"])
 
-# --- Função de Conversão ---
+# --- Função Auxiliar: Converter para Decimal (apenas para cálculos internos) ---
 def converter_para_horas_decimais(valor):
-    """Converte strings de tempo (ex: '-05:30') para float (-5.5)."""
-    if not isinstance(valor, str):
-        return 0.0
-    
+    if not isinstance(valor, str): return 0.0
     valor = valor.strip()
-    sinal = 1
-    
-    if valor.startswith("-"):
-        sinal = -1
-        valor = valor[1:]
-    elif valor.startswith("+"):
-        valor = valor[1:]
-        
+    sinal = -1 if valor.startswith("-") else 1
+    if valor.startswith("-") or valor.startswith("+"): valor = valor[1:]
     try:
         parts = valor.split(':')
         if len(parts) == 2:
-            horas, minutos = map(int, parts)
-            decimal = horas + (minutos / 60)
-            return decimal * sinal
+            return (int(parts[0]) + int(parts[1]) / 60) * sinal
         return 0.0
     except:
         return 0.0
 
+# --- Função Auxiliar: Estilo Condicional (Vermelho para Negativo) ---
+def estilo_negativo(val):
+    """Colore o texto de vermelho se começar com '-' e verde caso contrário"""
+    color = 'red' if str(val).strip().startswith('-') else 'green'
+    # Deixa negrito se for negativo
+    weight = 'bold' if str(val).strip().startswith('-') else 'normal'
+    return f'color: {color}; font-weight: {weight}'
+
 # --- Processamento ---
 if arquivo_upload is not None:
     try:
-        # 1. Extrair Data/Hora do Cabeçalho (Linha 3 do arquivo original)
+        # 1. Extrair Data/Hora (Cabeçalho)
         data_relatorio = "Data não identificada"
         try:
             if arquivo_upload.name.endswith('.csv'):
                 df_head = pd.read_csv(arquivo_upload, header=None, nrows=3)
             else:
                 df_head = pd.read_excel(arquivo_upload, header=None, nrows=3, engine='openpyxl')
-            
-            # Pega o valor da 3ª linha, 1ª coluna (índice 2, 0)
             val_data = str(df_head.iloc[2, 0])
-            if val_data and val_data != 'nan':
-                data_relatorio = val_data
-        except Exception:
-            pass # Se falhar a data, segue o fluxo
+            if val_data and val_data != 'nan': data_relatorio = val_data
+        except: pass
         
-        # Resetar o ponteiro do arquivo para ler os dados completos
-        arquivo_upload.seek(0)
+        arquivo_upload.seek(0) # Resetar ponteiro
 
-        # 2. Ler Dados Principais
+        # 2. Ler Dados
         if arquivo_upload.name.endswith('.csv'):
             df = pd.read_csv(arquivo_upload, skiprows=4)
         else:
             df = pd.read_excel(arquivo_upload, skiprows=4, engine='openpyxl', dtype={'Total Banco': str})
 
-        # Verifica colunas essenciais
         if 'Total Banco' not in df.columns or 'Cargo' not in df.columns:
-            st.error("Erro: O ficheiro não tem as colunas esperadas ('Total Banco', 'Cargo'). Verifique o relatório.")
+            st.error("Erro: Colunas 'Total Banco' ou 'Cargo' não encontradas.")
         else:
-            # Exibir Carimbo de Data
-            st.info(f"📅 **Data de Extração dos Dados:** {data_relatorio}")
+            st.info(f"📅 **Dados atualizados em:** {data_relatorio}")
 
-            # Tratamento de dados
+            # Tratamentos
             df['Total Banco'] = df['Total Banco'].astype(str)
+            # Criamos a coluna decimal APENAS para ordenar e gerar gráfico, mas não vamos exibi-la
             df['Saldo_Decimal'] = df['Total Banco'].apply(converter_para_horas_decimais)
             
-            # --- BARRA LATERAL (Filtros) ---
+            # --- FILTROS ---
             st.sidebar.header("Filtros")
-            lista_cargos = df['Cargo'].dropna().unique()
-            cargos = st.sidebar.multiselect("Filtrar por Cargo", options=lista_cargos, default=lista_cargos)
-            
+            cargos = st.sidebar.multiselect("Filtrar por Cargo", options=df['Cargo'].dropna().unique(), default=df['Cargo'].dropna().unique())
             df_filtrado = df[df['Cargo'].isin(cargos)]
 
-            if df_filtrado.empty:
-                st.warning("Nenhum dado encontrado para os filtros selecionados.")
-            else:
-                # --- MÉTRICAS (KPIs) ---
+            if not df_filtrado.empty:
+                # --- KPIS ---
                 st.markdown("---")
                 col1, col2, col3 = st.columns(3)
-                
                 total_devedores = df_filtrado[df_filtrado['Saldo_Decimal'] < 0].shape[0]
                 total_credores = df_filtrado[df_filtrado['Saldo_Decimal'] > 0].shape[0]
-                
-                # Menor saldo (maior dívida)
-                if not df_filtrado[df_filtrado['Saldo_Decimal'] < 0].empty:
-                    maior_divida = df_filtrado['Saldo_Decimal'].min()
+                maior_divida = df_filtrado[df_filtrado['Saldo_Decimal'] < 0]['Total Banco'].min() if total_devedores > 0 else "00:00"
+                # Para mostrar a maior dívida, pegamos o valor original em string correspondente ao menor decimal
+                if total_devedores > 0:
+                     idx_pior = df_filtrado['Saldo_Decimal'].idxmin()
+                     maior_divida_str = df_filtrado.loc[idx_pior, 'Total Banco']
                 else:
-                    maior_divida = 0.0
-                
+                     maior_divida_str = "00:00"
+
                 col1.metric("Pessoas com Saldo Negativo", f"{total_devedores}", delta_color="inverse")
                 col2.metric("Pessoas com Saldo Positivo", f"{total_credores}")
-                col3.metric("Maior Débito (Horas)", f"{maior_divida:.2f}", delta_color="inverse")
+                col3.metric("Maior Débito", f"{maior_divida_str}", delta_color="inverse")
 
-                # --- ALERTA DE CRÍTICOS (Slider) ---
-                with st.expander("⚠️ Configurar Alerta de Nível Crítico (Clique para abrir)", expanded=False):
-                    limite_alerta = st.slider("Definir limite crítico", min_value=-50.0, max_value=0.0, value=-10.0, step=0.5)
-                    df_criticos = df_filtrado[df_filtrado['Saldo_Decimal'] <= limite_alerta]
-                    if not df_criticos.empty:
-                        st.error(f"Atenção! {len(df_criticos)} pessoas ultrapassaram {limite_alerta} horas.")
+                # --- ALERTA CRÍTICO ---
+                with st.expander("⚠️ Configurar Alerta Crítico", expanded=False):
+                    limite = st.slider("Limite (horas negativas)", -50.0, 0.0, -10.0, 0.5)
+                    df_crit = df_filtrado[df_filtrado['Saldo_Decimal'] <= limite]
+                    if not df_crit.empty:
+                        st.error(f"Atenção! {len(df_crit)} pessoas ultrapassaram {limite} horas.")
+                        # Mostra tabela sem o decimal
+                        st.dataframe(
+                            df_crit[['Nome', 'Cargo', 'Total Banco']]
+                            .style.applymap(estilo_negativo, subset=['Total Banco']),
+                            use_container_width=True
+                        )
                     else:
-                        st.success("Ninguém na zona crítica configurada.")
+                        st.success("Ninguém na zona crítica.")
 
-                # --- TABELA SOMENTE DE NEGATIVOS (Destaque Principal) ---
+                # --- TABELA DEVEDORES (SEM DECIMAL) ---
                 st.divider()
                 st.subheader("📉 Lista de Devedores (Apenas Saldo Negativo)")
                 
-                df_negativos = df_filtrado[df_filtrado['Saldo_Decimal'] < 0].sort_values('Saldo_Decimal', ascending=True)
+                # Ordena pelo decimal (bastidores), mas exibe apenas colunas úteis
+                df_neg = df_filtrado[df_filtrado['Saldo_Decimal'] < 0].sort_values('Saldo_Decimal', ascending=True)
 
-                if not df_negativos.empty:
+                if not df_neg.empty:
                     st.dataframe(
-                        df_negativos[['Nome', 'Cargo', 'Total Banco', 'Saldo_Decimal']]
-                        .style.format({"Saldo_Decimal": "{:.2f}"})
-                        .applymap(lambda x: 'color: red; font-weight: bold;', subset=['Total Banco', 'Saldo_Decimal']),
+                        df_neg[['Nome', 'Cargo', 'Total Banco']]
+                        .style.applymap(estilo_negativo, subset=['Total Banco']),
                         use_container_width=True
                     )
                 else:
-                    st.success("Excelente! Ninguém na equipa tem saldo negativo.")
+                    st.success("Ninguém com saldo negativo!")
 
-                # --- TABELA GERAL (Expander) ---
+                # --- TABELA GERAL (SEM DECIMAL) ---
                 st.divider()
-                with st.expander("Ver Tabela Completa (Todos os Colaboradores)"):
+                with st.expander("Ver Tabela Completa"):
                     st.dataframe(
-                        df_filtrado[['Nome', 'Cargo', 'Saldo Anterior', 'Saldo Período', 'Total Banco', 'Saldo_Decimal']]
-                        .style.applymap(lambda x: 'color: red' if x < 0 else 'color: green', subset=['Saldo_Decimal'])
-                        .format({"Saldo_Decimal": "{:.2f}"}),
+                        df_filtrado[['Nome', 'Cargo', 'Saldo Anterior', 'Saldo Período', 'Total Banco']]
+                        .style.applymap(estilo_negativo, subset=['Saldo Anterior', 'Saldo Período', 'Total Banco']),
                         use_container_width=True
                     )
 
+            else:
+                st.warning("Sem dados para os filtros selecionados.")
     except Exception as e:
-        st.error(f"Ocorreu um erro ao ler o ficheiro: {e}")
-
+        st.error(f"Erro ao processar: {e}")
 else:
-    st.info("👆 Aguardando o upload do ficheiro (CSV ou XLSX).")
+    st.info("👆 Aguardando upload.")
