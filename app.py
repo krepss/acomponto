@@ -5,7 +5,7 @@ import plotly.express as px
 # Configuração da Página
 st.set_page_config(page_title="Monitorização de Banco de Horas", layout="wide")
 
-st.title("⏳ Painel de Controlo: Banco de Horas da Equipa")
+st.title("⏳ Painel de Controle: Banco de Horas da Equipe")
 
 # --- ÁREA DE UPLOAD (Aceita CSV e XLSX) ---
 st.write("Faça o upload do ficheiro exportado do sistema de ponto (Excel ou CSV).")
