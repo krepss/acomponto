@@ -13,6 +13,7 @@ arquivo_upload = st.file_uploader("Escolha o ficheiro", type=["csv", "xlsx"])
 
 # --- Função de Conversão ---
 def converter_para_horas_decimais(valor):
+    """Converte strings de tempo (ex: '-05:30') para float (-5.5)."""
     if not isinstance(valor, str):
         return 0.0
     
@@ -48,11 +49,11 @@ if arquivo_upload is not None:
         if 'Total Banco' not in df.columns or 'Cargo' not in df.columns:
             st.error("Erro: O ficheiro não tem as colunas esperadas ('Total Banco', 'Cargo'). Verifique o relatório.")
         else:
-            # Processamento
+            # Tratamento de dados
             df['Total Banco'] = df['Total Banco'].astype(str)
             df['Saldo_Decimal'] = df['Total Banco'].apply(converter_para_horas_decimais)
             
-            # --- BARRA LATERAL ---
+            # --- BARRA LATERAL (Filtros) ---
             st.sidebar.header("Filtros")
             lista_cargos = df['Cargo'].dropna().unique()
             cargos = st.sidebar.multiselect("Filtrar por Cargo", options=lista_cargos, default=lista_cargos)
@@ -69,6 +70,7 @@ if arquivo_upload is not None:
                 total_devedores = df_filtrado[df_filtrado['Saldo_Decimal'] < 0].shape[0]
                 total_credores = df_filtrado[df_filtrado['Saldo_Decimal'] > 0].shape[0]
                 
+                # Menor saldo (maior dívida)
                 if not df_filtrado[df_filtrado['Saldo_Decimal'] < 0].empty:
                     maior_divida = df_filtrado['Saldo_Decimal'].min()
                 else:
@@ -87,7 +89,7 @@ if arquivo_upload is not None:
                     else:
                         st.success("Ninguém na zona crítica configurada.")
 
-                # --- GRÁFICO ---
+                # --- GRÁFICO GERAL ---
                 st.divider()
                 st.subheader("📊 Visão Geral da Equipa")
                 
@@ -104,10 +106,34 @@ if arquivo_upload is not None:
                 fig.add_vline(x=0, line_width=1, line_dash="dash", line_color="black")
                 st.plotly_chart(fig, use_container_width=True)
 
-                # ==========================================================
-                # NOVA SEÇÃO: TABELA SOMENTE DE NEGATIVOS
-                # ==========================================================
+                # --- NOVA SEÇÃO: TABELA SOMENTE DE NEGATIVOS ---
                 st.divider()
                 st.subheader("📉 Lista de Devedores (Apenas Saldo Negativo)")
                 
-                # Filtrar apenas negativos e ordenar do menor (mais negativo)
+                df_negativos = df_filtrado[df_filtrado['Saldo_Decimal'] < 0].sort_values('Saldo_Decimal', ascending=True)
+
+                if not df_negativos.empty:
+                    st.dataframe(
+                        df_negativos[['Nome', 'Cargo', 'Total Banco', 'Saldo_Decimal']]
+                        .style.format({"Saldo_Decimal": "{:.2f}"})
+                        .applymap(lambda x: 'color: red; font-weight: bold;', subset=['Total Banco', 'Saldo_Decimal']),
+                        use_container_width=True
+                    )
+                else:
+                    st.success("Excelente! Ninguém na equipa tem saldo negativo.")
+
+                # --- TABELA GERAL (Expander) ---
+                st.divider()
+                with st.expander("Ver Tabela Completa (Todos os Colaboradores)"):
+                    st.dataframe(
+                        df_filtrado[['Nome', 'Cargo', 'Saldo Anterior', 'Saldo Período', 'Total Banco', 'Saldo_Decimal']]
+                        .style.applymap(lambda x: 'color: red' if x < 0 else 'color: green', subset=['Saldo_Decimal'])
+                        .format({"Saldo_Decimal": "{:.2f}"}),
+                        use_container_width=True
+                    )
+
+    except Exception as e:
+        st.error(f"Ocorreu um erro ao ler o ficheiro: {e}")
+
+else:
+    st.info("👆 Aguardando o upload do ficheiro (CSV ou XLSX).")
