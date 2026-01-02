@@ -30,7 +30,7 @@ def converter_para_horas_decimais(valor):
 
 # --- Carregamento dos Dados ---
 # O arquivo carregado parece ter 4 linhas de cabeçalho antes da tabela real
-arquivo = "Planilha_Saldo_Horas (34).xlsx - Planilha_Saldo_Horas.csv"
+arquivo = "horas.csv"
 
 try:
     # Ler o CSV pulando as 4 primeiras linhas
