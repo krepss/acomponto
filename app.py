@@ -110,31 +110,4 @@ if arquivo_upload is not None:
                 st.divider()
                 st.subheader("📉 Lista de Devedores (Apenas Saldo Negativo)")
                 
-                # Filtrar apenas negativos e ordenar do menor (mais negativo) para o maior
-                df_negativos = df_filtrado[df_filtrado['Saldo_Decimal'] < 0].sort_values('Saldo_Decimal', ascending=True)
-
-                if not df_negativos.empty:
-                    st.dataframe(
-                        df_negativos[['Nome', 'Cargo', 'Total Banco', 'Saldo_Decimal']]
-                        .style.format({"Saldo_Decimal": "{:.2f}"})
-                        .applymap(lambda x: 'color: red; font-weight: bold;', subset=['Total Banco', 'Saldo_Decimal']),
-                        use_container_width=True
-                    )
-                else:
-                    st.success("Excelente! Ninguém na equipa tem saldo negativo.")
-
-                # --- TABELA GERAL (Expander) ---
-                st.divider()
-                with st.expander("Ver Tabela Completa (Todos os Colaboradores)"):
-                    st.dataframe(
-                        df_filtrado[['Nome', 'Cargo', 'Saldo Anterior', 'Saldo Período', 'Total Banco', 'Saldo_Decimal']]
-                        .style.applymap(lambda x: 'color: red' if x < 0 else 'color: green', subset=['Saldo_Decimal'])
-                        .format({"Saldo_Decimal": "{:.2f}"}),
-                        use_container_width=True
-                    )
-
-    except Exception as e:
-        st.error(f"Ocorreu um erro ao ler o ficheiro: {e}")
-
-else:
-    st.info("👆 Aguardando o upload do ficheiro (CSV ou XLSX).")
+                # Filtrar apenas negativos e ordenar do menor (mais negativo)
