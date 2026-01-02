@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 
 # Configuração da Página
 st.set_page_config(page_title="Gestão de Banco de Horas", layout="wide")
@@ -11,7 +10,7 @@ st.title("⏳ Painel de Gestão: Banco de Horas")
 st.write("Faça o upload do ficheiro exportado do sistema de ponto (Excel ou CSV).")
 arquivo_upload = st.file_uploader("Escolha o ficheiro", type=["csv", "xlsx"])
 
-# --- Função Auxiliar: Converter para Decimal (apenas para cálculos internos) ---
+# --- Função Auxiliar: Converter para Decimal (apenas para ordenação interna) ---
 def converter_para_horas_decimais(valor):
     if not isinstance(valor, str): return 0.0
     valor = valor.strip()
@@ -34,11 +33,11 @@ def estilizar_tabela(val):
     """
     val_str = str(val).strip()
     if val_str.startswith('-'):
-        return 'color: #ff4b4b; font-weight: bold;' # Vermelho Streamlit
+        return 'color: #ff4b4b; font-weight: bold;' # Vermelho
     elif val_str == "00:00" or val_str == "0":
         return 'color: gray;'
     else:
-        return 'color: #2e7d32; font-weight: bold;' # Verde Escuro
+        return 'color: #2e7d32; font-weight: bold;' # Verde
 
 # --- Processamento ---
 if arquivo_upload is not None:
@@ -71,10 +70,9 @@ if arquivo_upload is not None:
             df['Total Banco'] = df['Total Banco'].astype(str)
             df['Saldo_Decimal'] = df['Total Banco'].apply(converter_para_horas_decimais)
             
-            # --- FILTROS ---
-            st.sidebar.header("Filtros")
-            cargos = st.sidebar.multiselect("Filtrar por Cargo", options=df['Cargo'].dropna().unique(), default=df['Cargo'].dropna().unique())
-            df_filtrado = df[df['Cargo'].isin(cargos)]
+            # (Filtros removidos conforme solicitado)
+            # Usamos o df completo agora
+            df_filtrado = df 
 
             if not df_filtrado.empty:
                 # --- KPIS ---
@@ -151,7 +149,7 @@ if arquivo_upload is not None:
                     )
 
             else:
-                st.warning("Sem dados para os filtros selecionados.")
+                st.warning("O arquivo parece estar vazio.")
     except Exception as e:
         st.error(f"Erro ao processar: {e}")
 else:
