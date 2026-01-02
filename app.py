@@ -3,17 +3,18 @@ import pandas as pd
 import plotly.express as px
 
 # Configuração da Página
-st.set_page_config(page_title="Monitoramento de Banco de Horas", layout="wide")
+st.set_page_config(page_title="Monitorização de Banco de Horas", layout="wide")
 
-st.title("⏳ Painel de Controle: Banco de Horas da Equipe")
+st.title("⏳ Painel de Controlo: Banco de Horas da Equipa")
 
-# --- ÁREA DE UPLOAD ---
-st.write("Faça o upload do arquivo CSV exportado do sistema de ponto.")
-arquivo_upload = st.file_uploader("Escolha o arquivo CSV", type=["csv"])
+# --- ÁREA DE UPLOAD (Aceita CSV e XLSX) ---
+st.write("Faça o upload do ficheiro exportado do sistema de ponto (Excel ou CSV).")
+arquivo_upload = st.file_uploader("Escolha o ficheiro", type=["csv", "xlsx"])
 
-# --- Função de Conversão (Mantida igual) ---
+# --- Função de Conversão ---
 def converter_para_horas_decimais(valor):
     if not isinstance(valor, str):
+        # Se vier do Excel, pode já ser um número ou objeto de tempo
         return 0.0
     
     valor = valor.strip()
@@ -26,44 +27,52 @@ def converter_para_horas_decimais(valor):
         valor = valor[1:]
         
     try:
-        horas, minutos = map(int, valor.split(':'))
-        decimal = horas + (minutos / 60)
-        return decimal * sinal
+        parts = valor.split(':')
+        if len(parts) == 2:
+            horas, minutos = map(int, parts)
+            decimal = horas + (minutos / 60)
+            return decimal * sinal
+        return 0.0
     except:
         return 0.0
 
-# --- Processamento (Só roda se tiver arquivo) ---
+# --- Processamento ---
 if arquivo_upload is not None:
     try:
-        # Ler o arquivo enviado (pulando as 4 linhas de cabeçalho padrão)
-        df = pd.read_csv(arquivo_upload, skiprows=4)
-        
-        # Verifica se as colunas essenciais existem
-        if 'Total Banco' not in df.columns or 'Cargo' not in df.columns:
-            st.error("Erro: O arquivo não tem as colunas esperadas ('Total Banco', 'Cargo'). Verifique se é o relatório correto.")
+        # Detectar se é Excel ou CSV e ler adequadamente
+        if arquivo_upload.name.endswith('.csv'):
+            df = pd.read_csv(arquivo_upload, skiprows=4)
         else:
-            # Processamento dos dados
+            # Para Excel, usamos engine='openpyxl'
+            # Convertemos 'Total Banco' para string para garantir que a função de conversão funcione
+            df = pd.read_excel(arquivo_upload, skiprows=4, engine='openpyxl', dtype={'Total Banco': str})
+
+        # Verifica colunas essenciais
+        if 'Total Banco' not in df.columns or 'Cargo' not in df.columns:
+            st.error("Erro: O ficheiro não tem as colunas esperadas ('Total Banco', 'Cargo'). Verifique o relatório.")
+        else:
+            # Processamento
+            # Assegura que tratamos valores nulos ou float que podem vir do Excel
+            df['Total Banco'] = df['Total Banco'].astype(str)
             df['Saldo_Decimal'] = df['Total Banco'].apply(converter_para_horas_decimais)
             
-            # --- BARRA LATERAL (Filtros) ---
+            # --- BARRA LATERAL ---
             st.sidebar.header("Filtros")
             lista_cargos = df['Cargo'].dropna().unique()
             cargos = st.sidebar.multiselect("Filtrar por Cargo", options=lista_cargos, default=lista_cargos)
             
-            # Filtrar DataFrame
             df_filtrado = df[df['Cargo'].isin(cargos)]
 
             if df_filtrado.empty:
                 st.warning("Nenhum dado encontrado para os filtros selecionados.")
             else:
-                # --- ALERTAS E MÉTRICAS ---
+                # --- MÉTRICAS ---
                 st.markdown("---")
                 col1, col2, col3 = st.columns(3)
                 
                 total_devedores = df_filtrado[df_filtrado['Saldo_Decimal'] < 0].shape[0]
                 total_credores = df_filtrado[df_filtrado['Saldo_Decimal'] > 0].shape[0]
                 
-                # Tratamento para caso não haja ninguém com saldo negativo
                 if not df_filtrado[df_filtrado['Saldo_Decimal'] < 0].empty:
                     maior_divida = df_filtrado['Saldo_Decimal'].min()
                 else:
@@ -73,9 +82,9 @@ if arquivo_upload is not None:
                 col2.metric("Pessoas com Saldo Positivo", f"{total_credores}")
                 col3.metric("Maior Débito (Horas)", f"{maior_divida:.2f}", delta_color="inverse")
 
-                # --- ALERTA VISUAL ---
+                # --- ALERTA ---
                 st.subheader("⚠️ Alertas: Colaboradores com Saldo Negativo Crítico")
-                limite_alerta = st.slider("Definir limite de alerta (horas negativas)", min_value=-50.0, max_value=0.0, value=-10.0, step=0.5)
+                limite_alerta = st.slider("Definir limite de alerta", min_value=-50.0, max_value=0.0, value=-10.0, step=0.5)
                 
                 df_alerta = df_filtrado[df_filtrado['Saldo_Decimal'] <= limite_alerta][['Nome', 'Cargo', 'Total Banco', 'Saldo_Decimal']]
                 
@@ -87,7 +96,7 @@ if arquivo_upload is not None:
 
                 # --- GRÁFICO ---
                 st.divider()
-                st.subheader("📊 Visão Geral da Equipe")
+                st.subheader("📊 Visão Geral da Equipa")
                 
                 fig = px.bar(
                     df_filtrado.sort_values('Saldo_Decimal'), 
@@ -97,12 +106,12 @@ if arquivo_upload is not None:
                     color='Saldo_Decimal',
                     title="Saldo de Horas por Colaborador",
                     color_continuous_scale=['red', 'gray', 'green'],
-                    height=max(600, len(df_filtrado) * 20) # Ajusta altura dinamicamente
+                    height=max(600, len(df_filtrado) * 20)
                 )
                 fig.add_vline(x=0, line_width=1, line_dash="dash", line_color="black")
                 st.plotly_chart(fig, use_container_width=True)
 
-                # --- TABELA GERAL ---
+                # --- TABELA ---
                 with st.expander("Ver Tabela Completa"):
                     st.dataframe(
                         df_filtrado[['Nome', 'Cargo', 'Saldo Anterior', 'Saldo Período', 'Total Banco', 'Saldo_Decimal']]
@@ -112,8 +121,7 @@ if arquivo_upload is not None:
                     )
 
     except Exception as e:
-        st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
-        st.info("Dica: Verifique se o arquivo CSV tem o mesmo formato do modelo (cabeçalho nas primeiras 4 linhas).")
+        st.error(f"Ocorreu um erro ao ler o ficheiro: {e}")
 
 else:
-    st.info("👆 Aguardando o upload do arquivo CSV para gerar o relatório.")
+    st.info("👆 Aguardando o upload do ficheiro (CSV ou XLSX).")
