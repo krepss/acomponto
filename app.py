@@ -14,7 +14,6 @@ arquivo_upload = st.file_uploader("Escolha o ficheiro", type=["csv", "xlsx"])
 # --- Função de Conversão ---
 def converter_para_horas_decimais(valor):
     if not isinstance(valor, str):
-        # Se vier do Excel, pode já ser um número ou objeto de tempo
         return 0.0
     
     valor = valor.strip()
@@ -43,8 +42,6 @@ if arquivo_upload is not None:
         if arquivo_upload.name.endswith('.csv'):
             df = pd.read_csv(arquivo_upload, skiprows=4)
         else:
-            # Para Excel, usamos engine='openpyxl'
-            # Convertemos 'Total Banco' para string para garantir que a função de conversão funcione
             df = pd.read_excel(arquivo_upload, skiprows=4, engine='openpyxl', dtype={'Total Banco': str})
 
         # Verifica colunas essenciais
@@ -52,7 +49,6 @@ if arquivo_upload is not None:
             st.error("Erro: O ficheiro não tem as colunas esperadas ('Total Banco', 'Cargo'). Verifique o relatório.")
         else:
             # Processamento
-            # Assegura que tratamos valores nulos ou float que podem vir do Excel
             df['Total Banco'] = df['Total Banco'].astype(str)
             df['Saldo_Decimal'] = df['Total Banco'].apply(converter_para_horas_decimais)
             
@@ -66,7 +62,7 @@ if arquivo_upload is not None:
             if df_filtrado.empty:
                 st.warning("Nenhum dado encontrado para os filtros selecionados.")
             else:
-                # --- MÉTRICAS ---
+                # --- MÉTRICAS (KPIs) ---
                 st.markdown("---")
                 col1, col2, col3 = st.columns(3)
                 
@@ -82,46 +78,17 @@ if arquivo_upload is not None:
                 col2.metric("Pessoas com Saldo Positivo", f"{total_credores}")
                 col3.metric("Maior Débito (Horas)", f"{maior_divida:.2f}", delta_color="inverse")
 
-                # --- ALERTA ---
-                st.subheader("⚠️ Alertas: Colaboradores com Saldo Negativo Crítico")
-                limite_alerta = st.slider("Definir limite de alerta", min_value=-50.0, max_value=0.0, value=-10.0, step=0.5)
-                
-                df_alerta = df_filtrado[df_filtrado['Saldo_Decimal'] <= limite_alerta][['Nome', 'Cargo', 'Total Banco', 'Saldo_Decimal']]
-                
-                if not df_alerta.empty:
-                    st.error(f"Atenção! {len(df_alerta)} pessoas têm mais de {abs(limite_alerta)} horas de débito.")
-                    st.dataframe(df_alerta.style.format({"Saldo_Decimal": "{:.2f}"}), use_container_width=True)
-                else:
-                    st.success("Nenhum colaborador ultrapassou o limite de alerta.")
+                # --- ALERTA DE CRÍTICOS (Slider) ---
+                with st.expander("⚠️ Configurar Alerta de Nível Crítico (Clique para abrir)", expanded=False):
+                    limite_alerta = st.slider("Definir limite crítico", min_value=-50.0, max_value=0.0, value=-10.0, step=0.5)
+                    df_criticos = df_filtrado[df_filtrado['Saldo_Decimal'] <= limite_alerta]
+                    if not df_criticos.empty:
+                        st.error(f"Atenção! {len(df_criticos)} pessoas ultrapassaram {limite_alerta} horas.")
+                    else:
+                        st.success("Ninguém na zona crítica configurada.")
 
                 # --- GRÁFICO ---
                 st.divider()
                 st.subheader("📊 Visão Geral da Equipa")
                 
-                fig = px.bar(
-                    df_filtrado.sort_values('Saldo_Decimal'), 
-                    x='Saldo_Decimal', 
-                    y='Nome', 
-                    orientation='h',
-                    color='Saldo_Decimal',
-                    title="Saldo de Horas por Colaborador",
-                    color_continuous_scale=['red', 'gray', 'green'],
-                    height=max(600, len(df_filtrado) * 20)
-                )
-                fig.add_vline(x=0, line_width=1, line_dash="dash", line_color="black")
-                st.plotly_chart(fig, use_container_width=True)
-
-                # --- TABELA ---
-                with st.expander("Ver Tabela Completa"):
-                    st.dataframe(
-                        df_filtrado[['Nome', 'Cargo', 'Saldo Anterior', 'Saldo Período', 'Total Banco', 'Saldo_Decimal']]
-                        .style.applymap(lambda x: 'color: red' if x < 0 else 'color: green', subset=['Saldo_Decimal'])
-                        .format({"Saldo_Decimal": "{:.2f}"}),
-                        use_container_width=True
-                    )
-
-    except Exception as e:
-        st.error(f"Ocorreu um erro ao ler o ficheiro: {e}")
-
-else:
-    st.info("👆 Aguardando o upload do ficheiro (CSV ou XLSX).")
+                fig = px.
